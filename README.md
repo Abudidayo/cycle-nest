@@ -88,7 +88,7 @@ To keep credentials secure, this project uses environment variables for database
 
 ```env
 MONGO_CONNECTION_STRING=mongodb+srv://user:pass@cluster.mongodb.net/?retryWrites=true&w=majority
-MONGO_DATABASE=items
+MONGO_DATABASE=large_sample
 ```
 
 ---
@@ -118,7 +118,7 @@ Open cmd and cd within the project directory.
     ```
     Alternatively, if you don't have a `.env` file:
     ```bash
-    docker run -p 8080:8080 -e MONGO_CONNECTION_STRING="your-mongodb-connection-string" -e MONGO_DATABASE="items" orchestrator-service:latest
+    docker run -p 8080:8080 -e MONGO_CONNECTION_STRING="your-mongodb-connection-string" -e MONGO_DATABASE="large_sample" orchestrator-service:latest
     ```
 4.  **Access the App:**
     - `http://localhost:8080/mavenproject1/`
