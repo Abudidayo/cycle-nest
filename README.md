@@ -106,7 +106,7 @@ Open cmd and cd within the project directory.
 
 1.  **CD into project directory:**
     ```bash
-    cd orchestrator-service/
+    cd cycle-nest/
     ```
 2.  **Build the Image:**
     ```bash
