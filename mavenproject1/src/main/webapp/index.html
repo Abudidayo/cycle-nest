@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CycleNest Inventory</title>
+    <link rel="stylesheet" href="css/style.css?v=2">
+    <style>
+        .controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        select {
+            padding: 8px 15px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .btn {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            color: white;
+            transition: background-color 0.2s;
+        }
+        .btn-calc {
+            background-color: #007bff;
+        }
+        .btn-calc:hover {
+            background-color: #0056b3;
+        }
+        .btn-calc:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .btn-req {
+            background-color: #28a745;
+        }
+        .btn-req:hover {
+            background-color: #218838;
+        }
+        .btn-cancel {
+            background-color: #dc3545;
+        }
+        .btn-cancel:hover {
+            background-color: #c82333;
+        }
+
+        .distance-result {
+            margin-top: 8px;
+            font-weight: bold;
+            color: #28a745;
+            font-size: 0.9em;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>CycleNest Inventory</h1>
+        
+        <div class="search-controls" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+            <input type="text" id="search-query" placeholder="Search items..." style="padding: 8px;">
+            <select id="filter-category" style="padding: 8px;">
+                <option value="">All Categories</option>
+                <option value="Fitness">Fitness</option>
+                <option value="Electronics">Electronics</option>
+                <option value="Home">Home</option>
+                <option value="Outdoor">Outdoor</option>
+                <option value="Toys">Toys</option>
+                <option value="Books">Books</option>
+            </select>
+            <input type="number" id="filter-min" placeholder="Min Price" style="padding: 8px; width: 80px;">
+            <input type="number" id="filter-max" placeholder="Max Price" style="padding: 8px; width: 80px;">
+            <button onclick="fetchData(true)" style="padding: 8px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Search</button>
+            <button onclick="clearFilters()" style="padding: 8px 15px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Clear</button>
+        </div>
+    </header>
+
+    <div id="grid-container">
+        <div class="loading">Loading data...</div>
+    </div>
+    
+    <div id="pagination-controls" class="controls" style="margin-top: 20px; display: none;">
+        <button id="btn-prev" class="btn" onclick="changePage(-1)" style="width: auto; background-color: #007bff;">Previous</button>
+        <span id="page-info" style="margin: 0 15px; font-weight: bold;">Page 1</span>
+        <button id="btn-next" class="btn" onclick="changePage(1)" style="width: auto; background-color: #007bff;">Next</button>
+    </div>
+
+    <script>
+        let requestStatusMap = {};
+        let currentPage = 1;
+        let totalPages = 1;
+        const LIMIT = 16;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchData();
+        });
+
+        async function fetchRequestStatuses() {
+            try {
+                const response = await fetch('resources/status/all');
+                if (response.ok) {
+                    const data = await response.json();
+                    requestStatusMap = {};
+                    data.forEach(req => {
+                        requestStatusMap[req.item_id] = req.status;
+                    });
+                }
+            } catch (e) {
+                console.error("Failed to load request statuses", e);
+            }
+        }
+        
+        function changePage(delta) {
+            const newPage = currentPage + delta;
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                fetchData();
+            }
+        }
+
+        async function fetchData(resetPage = false) {
+            if (resetPage) currentPage = 1;
+            
+            const container = document.getElementById('grid-container');
+            const paginationDiv = document.getElementById('pagination-controls');
+            const dbName = "large_sample";
+            
+            // Read Search Inputs
+            const query = document.getElementById('search-query').value;
+            const category = document.getElementById('filter-category').value;
+            const minPrice = document.getElementById('filter-min').value;
+            const maxPrice = document.getElementById('filter-max').value;
+            
+            // Determine if we are searching or listing
+            const isSearch = (query || category || minPrice || maxPrice);
+
+            container.innerHTML = '<div class="loading">Loading data from ' + dbName + '...</div>';
+            
+            await fetchRequestStatuses();
+
+            try {
+                let url;
+                if (isSearch) {
+                    // Search API currently does not support pagination in this refactor
+                    // so we hide pagination controls when searching
+                    const params = new URLSearchParams({ db: dbName });
+                    if (query) params.append('query', query);
+                    if (category) params.append('category', category);
+                    if (minPrice) params.append('minPrice', minPrice);
+                    if (maxPrice) params.append('maxPrice', maxPrice);
+                    url = `resources/item-search?${params.toString()}`;
+                    paginationDiv.style.display = 'none';
+                } else {
+                    // Main Items API with pagination
+                    url = `resources/inventory?db=${dbName}&page=${currentPage}`;
+                    paginationDiv.style.display = 'block';
+                }
+
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Network response was not ok');
+                
+                const responseData = await response.json();
+                container.innerHTML = ''; 
+                
+                let items = [];
+                
+                if (Array.isArray(responseData)) {
+                    // Handle legacy/search array response
+                    items = responseData;
+                    // For search, we don't have total pages from server
+                } else {
+                    // Handle new paginated object response
+                    items = responseData.items;
+                    totalPages = responseData.totalPages;
+                    currentPage = responseData.currentPage;
+                    
+                    document.getElementById('page-info').innerText = `Page ${currentPage} of ${totalPages}`;
+                    document.getElementById('btn-prev').disabled = (currentPage <= 1);
+                    document.getElementById('btn-next').disabled = (currentPage >= totalPages);
+                }
+
+                if (!items || items.length === 0) {
+                    container.innerHTML = '<div class="loading">No items found matching your criteria.</div>';
+                    return;
+                }
+
+                items.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    
+                    const itemName = item.Name || item.name || item.item_name || 'Unnamed Item';
+                    let contentHtml = `<h3>${itemName}</h3>`;
+                    
+                    for (const [key, value] of Object.entries(item)) {
+                        const lowerKey = key.toLowerCase();
+                        if (lowerKey !== '_id' && 
+                            lowerKey !== 'name' && 
+                            lowerKey !== 'item_id' && 
+                            lowerKey !== 'owner_id') {
+                            
+                            let displayValue = value;
+                            if (typeof value === 'object' && value !== null) {
+                                displayValue = JSON.stringify(value);
+                            }
+
+                            contentHtml += `
+                                <div class="card-row">
+                                    <span class="label">${key}:</span>
+                                    <span class="value">${displayValue}</span>
+                                </div>
+                            `;
+                        }
+                    }
+                    
+                    const footer = document.createElement('div');
+                    const itemId = item.ID || item._id;
+
+                    const btnGroup = document.createElement('div');
+                    btnGroup.className = 'btn-group';
+
+                    const btnCalc = document.createElement('button');
+                    btnCalc.className = 'btn btn-calc';
+                    btnCalc.innerText = 'Check Distance';
+                    let itemLat = item.Latitude || item.latitude || item.Lat || item.lat;
+                    let itemLon = item.Longitude || item.longitude || item.Lon || item.lon;
+                    
+                    if (!itemLat || !itemLon) {
+                        btnCalc.disabled = true;
+                        btnCalc.title = "No coordinates found";
+                    } else {
+                        btnCalc.onclick = () => calculateDistance(itemLat, itemLon, footer);
+                    }
+
+                    const btnReq = document.createElement('button');
+                    const currentStatus = requestStatusMap[itemId];
+                    const isRequested = currentStatus === 'Pending';
+
+                    updateRequestButtonState(btnReq, isRequested);
+                    btnReq.onclick = () => toggleRequest(itemId, btnReq);
+
+                    btnGroup.appendChild(btnCalc);
+                    btnGroup.appendChild(btnReq);
+                    
+                    footer.appendChild(btnGroup);
+                    card.innerHTML = contentHtml;
+                    card.appendChild(footer);
+                    container.appendChild(card);
+                });
+
+            } catch (error) {
+                console.error('Error:', error);
+                container.innerHTML = `<div class="loading" style="color:red;">
+                    Error loading data: ${error.message}
+                </div>`;
+            }
+        }
+
+        function clearFilters() {
+            document.getElementById('search-query').value = '';
+            document.getElementById('filter-category').value = '';
+            document.getElementById('filter-min').value = '';
+            document.getElementById('filter-max').value = '';
+            fetchData(true);
+        }
+
+        function updateRequestButtonState(btn, isRequested) {
+            if (isRequested) {
+                btn.className = 'btn btn-cancel';
+                btn.innerText = 'Cancel';
+            } else {
+                btn.className = 'btn btn-req';
+                btn.innerText = 'Request';
+            }
+        }
+
+        async function toggleRequest(itemId, btnElement) {
+            btnElement.disabled = true;
+            const originalText = btnElement.innerText;
+            btnElement.innerText = '...';
+
+            try {
+                const response = await fetch('resources/status/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: String(itemId) })  
+                });
+
+                if (!response.ok) throw new Error("Request failed");
+
+                                const result = await response.json();
+
+                                const newStatus = result.status;
+
+                                const isRequested = newStatus === 'Pending';
+
+                                
+
+                                updateRequestButtonState(btnElement, isRequested);
+                requestStatusMap[itemId] = newStatus;
+
+            } catch (err) {
+                console.error(err);
+                alert("Failed to update request status.");
+                btnElement.innerText = originalText;
+            } finally {
+                btnElement.disabled = false;
+            }
+        }
+
+        function calculateDistance(itemLat, itemLon, resultContainer) {
+            if (!navigator.geolocation) {
+                alert("Geolocation is not supported by your browser");
+                return;
+            }
+
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'distance-result';
+            resultDiv.innerText = 'Locating you...';
+            
+            const existing = resultContainer.querySelector('.distance-result');
+            if (existing) existing.remove();
+            
+            resultContainer.appendChild(resultDiv);
+
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    resultDiv.innerText = 'Routing...';
+                    
+                    const userLat = position.coords.latitude;
+                    const userLon = position.coords.longitude;
+
+                    try {
+                        const url = `resources/route-service/calculate?userLat=${userLat}&userLon=${userLon}&itemId=${encodeURIComponent("ignore")}&db=ignore&startLat=${userLat}&startLon=${userLon}&endLat=${itemLat}&endLon=${itemLon}`;
+                        const simpleUrl = `resources/route-service?startLat=${userLat}&startLon=${userLon}&endLat=${itemLat}&endLon=${itemLon}`;
+
+                        const response = await fetch(simpleUrl);
+                        if (!response.ok) throw new Error("API Request Failed");
+
+                        const data = await response.json();
+                        
+                        if (data.routes && data.routes.length > 0) {
+                            const meters = data.routes[0].distance;
+                            const km = (meters / 1000).toFixed(2);
+                            const miles = (meters * 0.000621371).toFixed(2);
+                            
+                            resultDiv.innerText = `${km} km (${miles} miles)`;
+                        } else {
+                            resultDiv.innerText = 'No route found.';
+                        }
+
+                    } catch (err) {
+                        console.error(err);
+                        resultDiv.innerText = 'Error calculating route.';
+                        resultDiv.style.color = 'red';
+                    }
+                },
+                (error) => {
+                    resultDiv.innerText = 'Location access denied.';
+                    resultDiv.style.color = 'red';
+                }
+            );
+        }
+    </script>
+</body>
+</html>
