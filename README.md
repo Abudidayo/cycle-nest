@@ -5,6 +5,8 @@ This project is part of a coursework by building RESTful web services to manage 
 
 **Prerequisite:** A MongoDB Atlas cluster is required to run this project. You can find the dataset in `items.json` to upload to your cluster.
 
+![1772492203069](https://github.com/user-attachments/assets/3edea8e8-6200-4aab-b9ea-3b9af499e736)
+
 ---
 
 ## 1. RESTful Web Services
